@@ -15,3 +15,4 @@ mlflow.db
 
 # DVC cache
 .dvc/cache/
+/config.local
