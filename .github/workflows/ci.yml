@@ -29,3 +29,6 @@ jobs:
       - name: Check API
         run: |
           python -c "from api import app; print('FastAPI application loaded successfully')"
+      - name: Run API tests
+        run: |
+          pytest -v
