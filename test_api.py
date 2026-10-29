@@ -6,8 +6,10 @@ client = TestClient(app)
 
 def test_home():
     response = client.get("/")
+
     assert response.status_code == 200
-    assert response.json()["message"] == "Drug Recommendation API is running"
+    assert "text/html" in response.headers["content-type"]
+    assert "Drug Recommendation System" in response.text
 
 
 def test_prediction():

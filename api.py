@@ -1,9 +1,13 @@
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import joblib
 import pandas as pd
 
 app = FastAPI(title="Drug Recommendation API")
+
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 model = joblib.load("models/drug_recommendation_model.pkl")
 
@@ -18,11 +22,12 @@ class PatientData(BaseModel):
 
 @app.get("/")
 def home():
-    return {"message": "Drug Recommendation API is running"}
+    return FileResponse("frontend/index.html")
 
 
 @app.post("/predict")
 def predict(data: PatientData):
+
     input_data = pd.DataFrame([{
         "Age": data.Age,
         "Sex": data.Sex,
