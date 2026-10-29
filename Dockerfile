@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY api.py .
 COPY models ./models
 COPY frontend ./frontend
+COPY Data ./Data
 
 EXPOSE 8000
 
