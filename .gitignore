@@ -16,3 +16,9 @@ mlflow.db
 # DVC cache
 .dvc/cache/
 .dvc/tmp/
+
+# Local credentials and generated monitoring files
+client_secret_*.json
+monitoring/prediction_logs.csv
+monitoring/drift_report.html
+monitoring/live_drift_report.html

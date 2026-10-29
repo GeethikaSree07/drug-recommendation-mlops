@@ -1,15 +1,32 @@
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from pathlib import Path
+from datetime import datetime, timezone
 import joblib
 import pandas as pd
+import os
 
 app = FastAPI(title="Drug Recommendation API")
 
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+DATA_DIR = BASE_DIR / "Data"
+MONITORING_DIR = BASE_DIR / "monitoring"
+LOG_FILE = MONITORING_DIR / "prediction_logs.csv"
+REFERENCE_FILE = DATA_DIR / "drug200.csv"
+REPORT_FILE = MONITORING_DIR / "live_drift_report.html"
 
-model = joblib.load("models/drug_recommendation_model.pkl")
+MONITORING_DIR.mkdir(parents=True, exist_ok=True)
+
+app.mount(
+    "/static",
+    StaticFiles(directory=str(FRONTEND_DIR)),
+    name="static"
+)
+
+model = joblib.load(BASE_DIR / "models" / "drug_recommendation_model.pkl")
 
 
 class PatientData(BaseModel):
@@ -20,14 +37,16 @@ class PatientData(BaseModel):
     Na_to_K: float
 
 
+FEATURES = ["Age", "Sex", "BP", "Cholesterol", "Na_to_K"]
+
+
 @app.get("/")
 def home():
-    return FileResponse("frontend/index.html")
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 @app.post("/predict")
 def predict(data: PatientData):
-
     input_data = pd.DataFrame([{
         "Age": data.Age,
         "Sex": data.Sex,
@@ -38,6 +57,67 @@ def predict(data: PatientData):
 
     prediction = model.predict(input_data)[0]
 
+    log_row = input_data.copy()
+    log_row["timestamp_utc"] = datetime.now(timezone.utc).isoformat()
+
+    write_header = not LOG_FILE.exists() or LOG_FILE.stat().st_size == 0
+    log_row.to_csv(
+        LOG_FILE,
+        mode="a",
+        header=write_header,
+        index=False
+    )
+
     return {
-        "predicted_drug_class": prediction
+        "predicted_drug_class": str(prediction),
+        "notice": "Educational ML prototype only; not medical advice."
     }
+
+
+@app.get("/monitoring/report")
+def monitoring_report():
+    try:
+        from evidently import Report
+        from evidently.presets import DataDriftPreset
+
+        if not REFERENCE_FILE.exists():
+            raise HTTPException(
+                status_code=500,
+                detail="Reference dataset not found."
+            )
+
+        if not LOG_FILE.exists():
+            raise HTTPException(
+                status_code=400,
+                detail="No prediction inputs logged yet. Make a test prediction first."
+            )
+
+        reference = pd.read_csv(REFERENCE_FILE)[FEATURES]
+        current = pd.read_csv(LOG_FILE)[FEATURES]
+
+        if len(current) < 5:
+            raise HTTPException(
+                status_code=400,
+                detail="At least 5 logged predictions are needed for this demo report."
+            )
+
+        report = Report([DataDriftPreset()])
+        result = report.run(
+            reference_data=reference,
+            current_data=current
+        )
+        result.save_html(str(REPORT_FILE))
+
+        return FileResponse(
+            REPORT_FILE,
+            media_type="text/html",
+            filename="live_drift_report.html"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not generate drift report: {exc}"
+        )
